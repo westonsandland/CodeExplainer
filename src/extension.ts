@@ -6,54 +6,81 @@ async function getCodeSummary(codeToSummarize: string): Promise<string> {
     if (!apiKey) {
         throw new Error('API key is not set in the environment variables');
     }
+
     const apiUrl = 'https://api.openai.com/v1/chat/completions';
     const experienceLevel = 'beginner';
-    interface OpenAIResponse {
-        choices: { text: string }[];
-    }
 
-    const response = await axios.post<OpenAIResponse>(apiUrl, {
-        model: "gpt-4o-mini",
-        messages: [
+    try {
+        interface OpenAIResponse {
+            choices: { message: { content: string } }[];
+        }
+
+        const response = await axios.post<OpenAIResponse>(
+            apiUrl,
             {
-                role: "system",
-                content: `You are a helpful assistant that summarizes code snippets for ${experienceLevel} programmers.`
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a helpful assistant that summarizes code snippets for ${experienceLevel} programmers.`
+                    },
+                    {
+                        role: "user",
+                        content: `Create a 100-character summary of the following code: ${codeToSummarize}`
+                    }
+                ],
+                max_tokens: 100,
             },
             {
-                role: "user",
-                content: `Create a 100-character summary of the following code: ${codeToSummarize}`
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                }
             }
-        ],
-        max_tokens: 100,
-    }, {
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        }
-    });
+        );
 
-    return response.data.choices[0].text.trim();
+        // Validate response structure
+        if (
+            response.data &&
+            response.data.choices &&
+            response.data.choices[0] &&
+            response.data.choices[0].message &&
+            response.data.choices[0].message.content
+        ) {
+            return response.data.choices[0].message.content.trim();
+        } else {
+            throw new Error('Invalid response format from OpenAI API');
+        }
+    } catch (error) {
+        console.error('Error fetching code summary:', (error as any).message || error);
+        throw new Error('Failed to fetch code summary. Check the logs for details.');
+    }
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // Register a hover provider for all text-based documents
-    const hoverProvider = vscode.languages.registerHoverProvider({ scheme: 'file', language: '*' }, {
-        async provideHover(document, position, _token) {
-            const lineText = document.lineAt(position.line).text;
-            console.log('lineText:', lineText);
-            const codeSummary = await getCodeSummary(lineText);
-            console.log('codeSummary:', codeSummary);
-            const hoverMessage = new vscode.MarkdownString(codeSummary);
-            
-            // MarkdownString defaults to not trusted. For simple text, safe to trust.
-            hoverMessage.isTrusted = true;
-            return new vscode.Hover(hoverMessage);
+    const hoverProvider = vscode.languages.registerHoverProvider(
+        { scheme: 'file', language: '*' },
+        {
+            async provideHover(document, position, _token) {
+                const lineText = document.lineAt(position.line).text;
+
+                try {
+                    const codeSummary = await getCodeSummary(lineText);
+
+                    const hoverMessage = new vscode.MarkdownString(codeSummary);
+                    hoverMessage.isTrusted = true; // Safe for simple text
+                    return new vscode.Hover(hoverMessage);
+                } catch (error) {
+                    console.error('Error in hover provider:', (error as any).message || error);
+                    return new vscode.Hover('Error generating summary. Please check the logs.');
+                }
+            },
         }
-    });
+    );
 
     context.subscriptions.push(hoverProvider);
 }
 
 export function deactivate() {
-    // Nothing to clean up currently
+    // No cleanup required for this extension
 }
