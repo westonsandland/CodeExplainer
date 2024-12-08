@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
-async function getCodeSummary(codeToSummarize: string): Promise<string> {
+async function getCodeSummary(codeToSummarize: string, fullDocumentContext: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
         throw new Error('API key is not set in the environment variables');
@@ -23,6 +23,14 @@ async function getCodeSummary(codeToSummarize: string): Promise<string> {
                     {
                         role: "system",
                         content: `You are a helpful assistant that summarizes code snippets for ${experienceLevel} programmers.`
+                    },
+                    {
+                        role: "system",
+                        content: `You will keep in mind the surrounding context of the code when providing your summary.`
+                    },
+                    {
+                        role: "system",
+                        content: `This is the full document that the line of code is in: ${fullDocumentContext}`
                     },
                     {
                         role: "user",
@@ -63,9 +71,9 @@ export function activate(context: vscode.ExtensionContext) {
         {
             async provideHover(document, position, _token) {
                 const lineText = document.lineAt(position.line).text;
-
+                console.log(document.getText());
                 try {
-                    const codeSummary = await getCodeSummary(lineText);
+                    const codeSummary = await getCodeSummary(lineText, document.getText());
 
                     const hoverMessage = new vscode.MarkdownString(codeSummary);
                     hoverMessage.isTrusted = true; // Safe for simple text

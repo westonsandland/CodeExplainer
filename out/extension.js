@@ -29,7 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
-async function getCodeSummary(codeToSummarize) {
+async function getCodeSummary(codeToSummarize, fullDocumentContext) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
         throw new Error('API key is not set in the environment variables');
@@ -43,6 +43,14 @@ async function getCodeSummary(codeToSummarize) {
                 {
                     role: "system",
                     content: `You are a helpful assistant that summarizes code snippets for ${experienceLevel} programmers.`
+                },
+                {
+                    role: "system",
+                    content: `You will keep in mind the surrounding context of the code when providing your summary.`
+                },
+                {
+                    role: "system",
+                    content: `This is the full document that the line of code is in: ${fullDocumentContext}`
                 },
                 {
                     role: "user",
@@ -77,8 +85,9 @@ function activate(context) {
     const hoverProvider = vscode.languages.registerHoverProvider({ scheme: 'file', language: '*' }, {
         async provideHover(document, position, _token) {
             const lineText = document.lineAt(position.line).text;
+            console.log(document.getText());
             try {
-                const codeSummary = await getCodeSummary(lineText);
+                const codeSummary = await getCodeSummary(lineText, document.getText());
                 const hoverMessage = new vscode.MarkdownString(codeSummary);
                 hoverMessage.isTrusted = true; // Safe for simple text
                 return new vscode.Hover(hoverMessage);
