@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
-
-// Simple in-memory cache.
-// Key: A string representing both the line and the entire document content
-// Value: The summary string returned by the API
-const codeSummaryCache = new Map<string, string>();
+// codeSummaryCache: Outer key = document URI, Inner key = line number
+const codeSummaryCache = new Map<string, Map<number, string>>();
 
 async function getCodeSummary(codeToSummarize: string, fullDocumentContext: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -53,7 +50,6 @@ async function getCodeSummary(codeToSummarize: string, fullDocumentContext: stri
             }
         );
 
-        // Validate response structure
         if (
             response.data &&
             response.data.choices &&
@@ -72,33 +68,46 @@ async function getCodeSummary(codeToSummarize: string, fullDocumentContext: stri
 }
 
 export function activate(context: vscode.ExtensionContext) {
+    // Invalidate cache when the document changes
+    const changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
+        const docUri = event.document.uri.toString();
+        if (codeSummaryCache.has(docUri)) {
+            codeSummaryCache.delete(docUri);
+            console.log(`Cache invalidated for document: ${docUri}`);
+        }
+    });
+
     const hoverProvider = vscode.languages.registerHoverProvider(
         { scheme: 'file', language: '*' },
         {
             async provideHover(document, position, _token) {
-                const lineText = document.lineAt(position.line).text;
+                const docUri = document.uri.toString();
+                const line = position.line;
+                const lineText = document.lineAt(line).text;
                 const fullDocumentText = document.getText();
 
-                // Create a unique key for this line + document combination.
-                // If you anticipate large documents or performance concerns,
-                // consider hashing this key instead of using raw strings.
-                const cacheKey = `${fullDocumentText}\n---\n${lineText}`;
+                // Check if we have a cache entry for this document
+                let docCache = codeSummaryCache.get(docUri);
+                if (!docCache) {
+                    docCache = new Map<number, string>();
+                    codeSummaryCache.set(docUri, docCache);
+                }
 
-                // Check if we have a cached summary for this line.
-                if (codeSummaryCache.has(cacheKey)) {
-                    const cachedSummary = codeSummaryCache.get(cacheKey)!;
-                    console.log('Cache hit for hovered line');
+                // Check if a summary for this line is already cached
+                if (docCache.has(line)) {
+                    const cachedSummary = docCache.get(line)!;
+                    console.log(`Cache hit for line ${line} in document ${docUri}`);
                     const hoverMessage = new vscode.MarkdownString(cachedSummary);
                     hoverMessage.isTrusted = true;
                     return new vscode.Hover(hoverMessage);
                 }
 
-                // No cached value found, so we fetch from API
-                console.log('Cache miss, calling API for summary');
+                // No cache hit, we need to fetch from API
+                console.log(`Cache miss for line ${line} in document ${docUri}. Calling API...`);
                 try {
                     const codeSummary = await getCodeSummary(lineText, fullDocumentText);
                     // Store in cache
-                    codeSummaryCache.set(cacheKey, codeSummary);
+                    docCache.set(line, codeSummary);
 
                     const hoverMessage = new vscode.MarkdownString(codeSummary);
                     hoverMessage.isTrusted = true;
@@ -111,7 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    context.subscriptions.push(hoverProvider);
+    context.subscriptions.push(hoverProvider, changeListener);
 }
 
 export function deactivate() {
