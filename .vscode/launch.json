@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "extensionHost",
+        "request": "launch",
+        "name": "Run Extension",
+        "program": "${file}",
+        "outFiles": [
+          "${workspaceFolder}/out/**/*.js"
+        ],
+        "preLaunchTask": "npm: compile",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "type": "extensionHost",
+        "request": "attach",
+        "name": "Attach Extension Host",
+        "port": 9229,
+        "outFiles": [
+          "${workspaceFolder}/out/**/*.js"
+        ]
+      }
+    ]
+  }
+  
