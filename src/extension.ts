@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
+
+// Simple in-memory cache.
+// Key: A string representing both the line and the entire document content
+// Value: The summary string returned by the API
+const codeSummaryCache = new Map<string, string>();
+
 async function getCodeSummary(codeToSummarize: string, fullDocumentContext: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -10,11 +16,11 @@ async function getCodeSummary(codeToSummarize: string, fullDocumentContext: stri
     const apiUrl = 'https://api.openai.com/v1/chat/completions';
     const experienceLevel = 'beginner';
 
-    try {
-        interface OpenAIResponse {
-            choices: { message: { content: string } }[];
-        }
+    interface OpenAIResponse {
+        choices: { message: { content: string } }[];
+    }
 
+    try {
         const response = await axios.post<OpenAIResponse>(
             apiUrl,
             {
@@ -71,12 +77,31 @@ export function activate(context: vscode.ExtensionContext) {
         {
             async provideHover(document, position, _token) {
                 const lineText = document.lineAt(position.line).text;
-                console.log(document.getText());
+                const fullDocumentText = document.getText();
+
+                // Create a unique key for this line + document combination.
+                // If you anticipate large documents or performance concerns,
+                // consider hashing this key instead of using raw strings.
+                const cacheKey = `${fullDocumentText}\n---\n${lineText}`;
+
+                // Check if we have a cached summary for this line.
+                if (codeSummaryCache.has(cacheKey)) {
+                    const cachedSummary = codeSummaryCache.get(cacheKey)!;
+                    console.log('Cache hit for hovered line');
+                    const hoverMessage = new vscode.MarkdownString(cachedSummary);
+                    hoverMessage.isTrusted = true;
+                    return new vscode.Hover(hoverMessage);
+                }
+
+                // No cached value found, so we fetch from API
+                console.log('Cache miss, calling API for summary');
                 try {
-                    const codeSummary = await getCodeSummary(lineText, document.getText());
+                    const codeSummary = await getCodeSummary(lineText, fullDocumentText);
+                    // Store in cache
+                    codeSummaryCache.set(cacheKey, codeSummary);
 
                     const hoverMessage = new vscode.MarkdownString(codeSummary);
-                    hoverMessage.isTrusted = true; // Safe for simple text
+                    hoverMessage.isTrusted = true;
                     return new vscode.Hover(hoverMessage);
                 } catch (error) {
                     console.error('Error in hover provider:', (error as any).message || error);

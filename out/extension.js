@@ -29,6 +29,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
+// Simple in-memory cache.
+// Key: A string representing both the line and the entire document content
+// Value: The summary string returned by the API
+const codeSummaryCache = new Map();
 async function getCodeSummary(codeToSummarize, fullDocumentContext) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -85,11 +89,27 @@ function activate(context) {
     const hoverProvider = vscode.languages.registerHoverProvider({ scheme: 'file', language: '*' }, {
         async provideHover(document, position, _token) {
             const lineText = document.lineAt(position.line).text;
-            console.log(document.getText());
+            const fullDocumentText = document.getText();
+            // Create a unique key for this line + document combination.
+            // If you anticipate large documents or performance concerns,
+            // consider hashing this key instead of using raw strings.
+            const cacheKey = `${fullDocumentText}\n---\n${lineText}`;
+            // Check if we have a cached summary for this line.
+            if (codeSummaryCache.has(cacheKey)) {
+                const cachedSummary = codeSummaryCache.get(cacheKey);
+                console.log('Cache hit for hovered line');
+                const hoverMessage = new vscode.MarkdownString(cachedSummary);
+                hoverMessage.isTrusted = true;
+                return new vscode.Hover(hoverMessage);
+            }
+            // No cached value found, so we fetch from API
+            console.log('Cache miss, calling API for summary');
             try {
-                const codeSummary = await getCodeSummary(lineText, document.getText());
+                const codeSummary = await getCodeSummary(lineText, fullDocumentText);
+                // Store in cache
+                codeSummaryCache.set(cacheKey, codeSummary);
                 const hoverMessage = new vscode.MarkdownString(codeSummary);
-                hoverMessage.isTrusted = true; // Safe for simple text
+                hoverMessage.isTrusted = true;
                 return new vscode.Hover(hoverMessage);
             }
             catch (error) {
