@@ -31,13 +31,41 @@ const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map();
+// Function to get the current experience level setting globally
+function getExperienceLevel() {
+    var _a;
+    const config = vscode.workspace.getConfiguration('codeExplainer');
+    // Explicitly fetch the global setting
+    const level = ((_a = config.inspect('experienceLevel')) === null || _a === void 0 ? void 0 : _a.globalValue) || 'Novice';
+    console.log(`Retrieved global experience level: ${level}`);
+    return level;
+}
+// Function to update the experience level globally
+// TODO: Use this during the login/authentication period to change the user experience level to what is set in the browser.
+// This should be fetched from my personal server for that person's user data.
+// async function updateExperienceLevel(newLevel: string): Promise<void> {
+//     const config = vscode.workspace.getConfiguration('codeExplainer');
+//     try {
+//         await config.update('experienceLevel', newLevel, vscode.ConfigurationTarget.Global);
+//         console.log(`Updated global experience level to: ${newLevel}`);
+//     } catch (error) {
+//         console.error('Error updating global experience level:', error);
+//     }
+// }
 async function getCodeSummary(codeToSummarize, fullDocumentContext) {
+    var _a;
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
         throw new Error('API key is not set in the environment variables');
     }
     const apiUrl = 'https://api.openai.com/v1/chat/completions';
-    const experienceLevel = 'beginner';
+    const experienceLevel = getExperienceLevel();
+    const tokenMaximums = {
+        Novice: 200,
+        Intermediate: 150,
+        Expert: 125
+    };
+    const token_maximum = (_a = tokenMaximums[experienceLevel]) !== null && _a !== void 0 ? _a : 200;
     try {
         const response = await axios_1.default.post(apiUrl, {
             model: "gpt-4o-mini",
@@ -52,14 +80,22 @@ async function getCodeSummary(codeToSummarize, fullDocumentContext) {
                 },
                 {
                     role: "system",
+                    content: `Put your explanation very non-technical speech for novices. It should be understandable to someone who has never written a line of code.`
+                },
+                {
+                    role: "system",
+                    content: `When speaking to intermediate level programmers, feel free to utilize common programming terms, but never use any words that would be considered advanced English.`
+                },
+                {
+                    role: "system",
                     content: `This is the full document that the line of code is in: ${fullDocumentContext}`
                 },
                 {
                     role: "user",
-                    content: `Create a 100-character summary of the following code: ${codeToSummarize}`
+                    content: `Create a ${token_maximum}-character summary of the following code: ${codeToSummarize}`
                 }
             ],
-            max_tokens: 100,
+            max_tokens: token_maximum,
         }, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -89,6 +125,15 @@ function activate(context) {
         if (codeSummaryCache.has(docUri)) {
             codeSummaryCache.delete(docUri);
             console.log(`Cache invalidated for document: ${docUri}`);
+        }
+    });
+    // Listen for changes to the experience level setting globally
+    const configChangeListener = vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('codeExplainer.experienceLevel')) {
+            console.log(`Global experience level setting changed to: ${getExperienceLevel()}`);
+            // Invalidate the entire cache since summaries depend on the experience level
+            codeSummaryCache.clear();
+            console.log('Cache cleared due to experience level change.');
         }
     });
     const hoverProvider = vscode.languages.registerHoverProvider({ scheme: 'file', language: '*' }, {
@@ -127,7 +172,7 @@ function activate(context) {
             }
         },
     });
-    context.subscriptions.push(hoverProvider, changeListener);
+    context.subscriptions.push(hoverProvider, changeListener, configChangeListener);
 }
 exports.activate = activate;
 function deactivate() {

@@ -15,6 +15,19 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "configuration": {
+            "type": "object",
+            "title": "Code Explainer",
+            "properties": {
+                "codeExplainer.experienceLevel": {
+                "type": "string",
+                "default": "Novice",
+                "enum": ["Novice", "Intermediate", "Expert"],
+                "description": "Set your experience level for the programming language that you will be using this extension with.",
+                "scope": "application"
+                }
+            }
+        },
         "languages": [
             {
                 "id": "plaintext",
