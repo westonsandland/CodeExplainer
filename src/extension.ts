@@ -127,7 +127,6 @@ function handleConfigurationChange(event: vscode.ConfigurationChangeEvent) {
     }
 }
 
-// Hover provider logic
 async function provideHoverSummary(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -161,7 +160,12 @@ async function provideHoverSummary(
         }
         // Transform <term> tags into clickable links
         const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
-            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(JSON.stringify({ term }))}`;
+            const commandArgs = JSON.stringify({
+                term,
+                line: lineText,
+                document: fullDocumentText,
+            });
+            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(commandArgs)}`;
             return `[${term}](${commandLink})`;
         });
         // Cache the processed summary
@@ -176,7 +180,6 @@ async function provideHoverSummary(
     }
 }
 
-// Activate function
 export function activate(context: vscode.ExtensionContext) {
     const changeListener = vscode.workspace.onDidChangeTextDocument(handleCacheInvalidation);
     const configChangeListener = vscode.workspace.onDidChangeConfiguration(handleConfigurationChange);
@@ -195,12 +198,14 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
             const term = args?.term;
-            if (term) {
-                await openChatWindow(term);
+            const line = args?.line;
+            const fullDocument = args?.document;
+
+            if (term && line && fullDocument) {
+                await openChatWindow(term, line, fullDocument);
             }
         })
     );
-    
 }
 
 export function deactivate() {

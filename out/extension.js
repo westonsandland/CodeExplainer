@@ -135,7 +135,6 @@ function handleConfigurationChange(event) {
         console.log('Cache cleared due to experience level change.');
     }
 }
-// Hover provider logic
 async function provideHoverSummary(document, position) {
     const docUri = document.uri.toString();
     const line = position.line;
@@ -163,7 +162,12 @@ async function provideHoverSummary(document, position) {
         }
         // Transform <term> tags into clickable links
         const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
-            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(JSON.stringify({ term }))}`;
+            const commandArgs = JSON.stringify({
+                term,
+                line: lineText,
+                document: fullDocumentText,
+            });
+            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(commandArgs)}`;
             return `[${term}](${commandLink})`;
         });
         // Cache the processed summary
@@ -178,7 +182,6 @@ async function provideHoverSummary(document, position) {
         return new vscode.Hover('Error generating summary. Please check the logs.');
     }
 }
-// Activate function
 function activate(context) {
     const changeListener = vscode.workspace.onDidChangeTextDocument(handleCacheInvalidation);
     const configChangeListener = vscode.workspace.onDidChangeConfiguration(handleConfigurationChange);
@@ -190,8 +193,10 @@ function activate(context) {
     context.subscriptions.push(hoverProvider, changeListener, configChangeListener);
     context.subscriptions.push(vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
         const term = args === null || args === void 0 ? void 0 : args.term;
-        if (term) {
-            await (0, deepDive_1.openChatWindow)(term);
+        const line = args === null || args === void 0 ? void 0 : args.line;
+        const fullDocument = args === null || args === void 0 ? void 0 : args.document;
+        if (term && line && fullDocument) {
+            await (0, deepDive_1.openChatWindow)(term, line, fullDocument);
         }
     }));
 }
