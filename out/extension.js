@@ -29,6 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
+const deepDive_1 = require("./deepDive");
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map();
 // Function to get the current experience level setting globally
@@ -58,7 +59,11 @@ function buildApiRequestPayload(codeToSummarize, fullDocumentContext, experience
         messages: [
             { role: "system", content: `You are a helpful programming assistant that summarizes code snippets for ${experienceLevel} programmers.` },
             { role: "system", content: `Put your explanation in simple, less-technical terms for novices.` },
-            { role: "system", content: `When speaking to intermediate level programmers, feel free to utilize common programming terms, but avoid any words that would be considered advanced jargon.` },
+            { role: "system", content: `Wrap all nouns in your response with the following HTML tag: <noun>...</noun>.` },
+            { role: "system", content: `Ensure the response is valid HTML and suitable for rendering in a Markdown popup.` },
+            { role: "system", content: `Wrap only meaningful nouns related to programming concepts in your response with the following HTML tag: <noun>...</noun>.` },
+            { role: "system", content: `Do not wrap generic words or filler text. For example: "This function initializes a FenwickTree with specified capacity" should result in "This <noun>function</noun> initializes a <noun>FenwickTree</noun> with specified <noun>capacity</noun>".` },
+            { role: "system", content: `Provide your response in plain text using Markdown. Do not wrap your response in backticks or use HTML code blocks.` },
             { role: "user", content: `This is the full document that the line of code is in: ${fullDocumentContext}` },
             { role: "user", content: `Do not explain ANY OTHER lines of code, ONLY the one I tell you to.` },
             { role: "user", content: `Create a ${tokenMaximum}-character summary of the following code: ${codeToSummarize}` }
@@ -145,15 +150,23 @@ async function provideHoverSummary(document, position) {
         console.log(`Cache hit for line ${line} in document ${docUri}`);
         const hoverMessage = new vscode.MarkdownString(cachedSummary);
         hoverMessage.isTrusted = true;
+        console.log(hoverMessage.value);
         return new vscode.Hover(hoverMessage);
     }
     console.log(`Cache miss for line ${line} in document ${docUri}. Calling API...`);
     try {
         const codeSummary = await getCodeSummary(lineText, fullDocumentText);
-        docCache.set(line, codeSummary);
-        const hoverMessage = new vscode.MarkdownString(codeSummary);
-        hoverMessage.isTrusted = true;
-        return new vscode.Hover(hoverMessage);
+        // Transform <noun> tags into clickable links
+        const enhancedSummary = codeSummary.replace(/<noun>(.*?)<\/noun>/g, (_, noun) => {
+            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(JSON.stringify({ noun }))}`;
+            return `[${noun}](${commandLink})`;
+        });
+        // Cache the processed summary
+        const formattedSummary = new vscode.MarkdownString(enhancedSummary);
+        formattedSummary.isTrusted = true; // Allow trusted Markdown for rendering links
+        docCache.set(line, formattedSummary.value);
+        console.log(formattedSummary.value);
+        return new vscode.Hover(formattedSummary);
     }
     catch (error) {
         console.error('Error in hover provider:', error.message || error);
@@ -170,6 +183,12 @@ function activate(context) {
         },
     });
     context.subscriptions.push(hoverProvider, changeListener, configChangeListener);
+    context.subscriptions.push(vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
+        const noun = args === null || args === void 0 ? void 0 : args.noun;
+        if (noun) {
+            await (0, deepDive_1.openChatWindow)(noun);
+        }
+    }));
 }
 exports.activate = activate;
 function deactivate() {
