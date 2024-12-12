@@ -38,10 +38,11 @@ function buildApiRequestPayload(
         messages: [
             { role: "system", content: `You are a helpful programming assistant that summarizes code snippets for ${experienceLevel} programmers.` },
             { role: "system", content: `Put your explanation in simple, less-technical terms for novices.` },
-            { role: "system", content: `Wrap all nouns in your response with the following HTML tag: <noun>...</noun>.` },
+            { role: "system", content: experienceLevel=="Novice"?
+                `Wrap ANY and EVERY noun, verb, and adjectives related to programming in your response with the following HTML tag: <term>...</term>.`:
+                `Wrap all technical terms (nouns, verbs, or adjectives) in your response with the following HTML tag: <term>...</term>.` },
             { role: "system", content: `Ensure the response is valid HTML and suitable for rendering in a Markdown popup.` },
-            { role: "system", content: `Wrap only meaningful nouns related to programming concepts in your response with the following HTML tag: <noun>...</noun>.` },
-            { role: "system", content: `Do not wrap generic words or filler text. For example: "This function initializes a FenwickTree with specified capacity" should result in "This <noun>function</noun> initializes a <noun>FenwickTree</noun> with specified <noun>capacity</noun>".` },
+            { role: "system", content: `For example: "This function initializes a FenwickTree with specified capacity" should result in "This <term>function</term> <term>initializes</term> a <term>FenwickTree</term> with specified <term>capacity</term>".` },
             { role: "system", content: `Provide your response in plain text using Markdown. Do not wrap your response in backticks or use HTML code blocks.` },
             { role: "user", content: `This is the full document that the line of code is in: ${fullDocumentContext}` },
             { role: "user", content: `Do not explain ANY OTHER lines of code, ONLY the one I tell you to.` },
@@ -153,12 +154,15 @@ async function provideHoverSummary(
 
     console.log(`Cache miss for line ${line} in document ${docUri}. Calling API...`);
     try {
-        const codeSummary = await getCodeSummary(lineText, fullDocumentText);
-
-        // Transform <noun> tags into clickable links
-        const enhancedSummary = codeSummary.replace(/<noun>(.*?)<\/noun>/g, (_, noun) => {
-            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(JSON.stringify({ noun }))}`;
-            return `[${noun}](${commandLink})`;
+        let codeSummary = await getCodeSummary(lineText, fullDocumentText);
+        // Post-process to ensure "line" isn't wrapped in <term> tags
+        if (codeSummary.includes('<term>line</term>')) {
+            codeSummary = codeSummary.replace(/<term>line<\/term>/g, 'line');
+        }
+        // Transform <term> tags into clickable links
+        const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
+            const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(JSON.stringify({ term }))}`;
+            return `[${term}](${commandLink})`;
         });
         // Cache the processed summary
         const formattedSummary = new vscode.MarkdownString(enhancedSummary);
@@ -190,9 +194,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
-            const noun = args?.noun;
-            if (noun) {
-                await openChatWindow(noun);
+            const term = args?.term;
+            if (term) {
+                await openChatWindow(term);
             }
         })
     );
