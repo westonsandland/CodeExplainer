@@ -14,11 +14,6 @@
 4. Press `F5` in VSCode to launch an Extension Development Host.
 5. Hover over a line of code in the new host window to see the "Hello World" popup.
 
-## Next Steps
-
-- Integrate calls to ChatGPT in `extension.ts` to fetch explanations for the hovered line of code.
-- Display the response from ChatGPT in the hover popup.
-
 ## Requirements
 
 - VSCode 1.60.0 or above
