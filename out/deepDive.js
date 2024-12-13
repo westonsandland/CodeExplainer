@@ -70,30 +70,44 @@ async function fetchGPTAnswer(noun, question) {
     }
 }
 exports.fetchGPTAnswer = fetchGPTAnswer;
-// Generate the HTML content for the webview
 function getWebviewContent(noun, initialResponse) {
     return `
         <html>
         <body>
             <h1>Discussion: ${noun}</h1>
-            <div id="chat" style="overflow-y: auto; height: 400px;">
+            <div id="chat" style="overflow-y: auto; height: 400px; border: 1px solid #ccc; padding: 10px;">
                 <div><strong>GPT:</strong> ${initialResponse}</div>
             </div>
-            <input id="input" type="text" style="width: 90%;" placeholder="Ask a question..." />
-            <button onclick="sendMessage()">Send</button>
+            <input id="input" type="text" style="width: 90%; margin-top: 10px;" placeholder="Ask a question..." />
+            <button onclick="sendMessage()" style="width: 8%; margin-top: 10px;">Send</button>
             <script>
                 const vscode = acquireVsCodeApi();
 
                 function sendMessage() {
                     const input = document.getElementById('input');
+                    const chat = document.getElementById('chat');
+                    
+                    // Display user's message in the chat
+                    const userMessage = document.createElement('div');
+                    userMessage.innerHTML = '<strong>You:</strong> ' + input.value;
+                    chat.appendChild(userMessage);
+                    
+                    // Scroll to the bottom of the chat
+                    chat.scrollTop = chat.scrollHeight;
+
+                    // Send the message to the extension
                     vscode.postMessage({ command: 'askGPT', text: input.value });
-                    input.value = '';
+                    input.value = ''; // Clear input field
                 }
 
                 window.addEventListener('message', (event) => {
                     const chat = document.getElementById('chat');
-                    const message = event.data.response;
-                    chat.innerHTML += '<div><strong>GPT:</strong> ' + message + '</div>';
+                    const gptMessage = document.createElement('div');
+                    gptMessage.innerHTML = '<strong>GPT:</strong> ' + event.data.response;
+                    chat.appendChild(gptMessage);
+
+                    // Scroll to the bottom of the chat
+                    chat.scrollTop = chat.scrollHeight;
                 });
             </script>
         </body>
