@@ -7,13 +7,16 @@ interface GPTResponse {
     choices: { message: { content: string } }[];
 }
 
-export async function fetchGPTDefinition(noun: string): Promise<string> {
+export async function fetchGPTDefinition(term: string, line: string, fullDocument: string): Promise<string> {
     try {
         const response = await axios.post<GPTResponse>('https://api.openai.com/v1/chat/completions', {
             model: "gpt-4o-mini",
             messages: [
-                { role: "system", content: "You are a programming assistant providing definitions." },
-                { role: "user", content: `Define "${noun}" in a programming context.` }
+                { role: "system", content: "You are a programming assistant explaining what a specific programming term means." },
+                { role: "user", content: `In 2500 characters or less, define "${term}" in the programming language that it is being used in.` },
+                { role: "user", content: `Also provide a 1000 character summary of what "${term}" is being used for in this line of code: "${line}"`},
+                { role: "user", content: `Lastly, if applicable, provide a 1000 character summary of how "${term}" is being used throughout this document: "${fullDocument}"`},
+                { role: "user", content: `Separate each section with a double line break, but otherwise do not make any indication of division between these outputs.`}
             ]
         }, {
             headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
@@ -87,7 +90,7 @@ export async function openChatWindow(term: string, line: string, fullDocument: s
     );
 
     // Initial GPT response
-    const initialResponse = await fetchGPTDefinition(term);
+    const initialResponse = await fetchGPTDefinition(term, line, fullDocument);
 
     // HTML content for the webview
     panel.webview.html = getWebviewContent(term, initialResponse);
@@ -100,9 +103,4 @@ export async function openChatWindow(term: string, line: string, fullDocument: s
             panel.webview.postMessage({ command: 'gptResponse', response });
         }
     });
-
-    // Log additional details for debugging
-    console.log(`Opened chat window for term: ${term}`);
-    console.log(`Line of code: ${line}`);
-    console.log(`Full document:\n${fullDocument}`);
 }

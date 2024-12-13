@@ -29,13 +29,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.openChatWindow = exports.getWebviewContent = exports.fetchGPTAnswer = exports.fetchGPTDefinition = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
-async function fetchGPTDefinition(noun) {
+async function fetchGPTDefinition(term, line, fullDocument) {
     try {
         const response = await axios_1.default.post('https://api.openai.com/v1/chat/completions', {
             model: "gpt-4o-mini",
             messages: [
-                { role: "system", content: "You are a programming assistant providing definitions." },
-                { role: "user", content: `Define "${noun}" in a programming context.` }
+                { role: "system", content: "You are a programming assistant explaining what a specific programming term means." },
+                { role: "user", content: `In 2500 characters or less, define "${term}" in the programming language that it is being used in.` },
+                { role: "user", content: `Also provide a 1000 character summary of what "${term}" is being used for in this line of code: "${line}"` },
+                { role: "user", content: `Lastly, if applicable, provide a 1000 character summary of how "${term}" is being used throughout this document: "${fullDocument}"` },
+                { role: "user", content: `Separate each section with a double line break, but otherwise do not make any indication of division between these outputs.` }
             ]
         }, {
             headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
@@ -105,7 +108,7 @@ async function openChatWindow(term, line, fullDocument) {
     vscode.ViewColumn.Two, // Show on the right side
     { enableScripts: true });
     // Initial GPT response
-    const initialResponse = await fetchGPTDefinition(term);
+    const initialResponse = await fetchGPTDefinition(term, line, fullDocument);
     // HTML content for the webview
     panel.webview.html = getWebviewContent(term, initialResponse);
     // Handle messages from the webview
@@ -116,10 +119,6 @@ async function openChatWindow(term, line, fullDocument) {
             panel.webview.postMessage({ command: 'gptResponse', response });
         }
     });
-    // Log additional details for debugging
-    console.log(`Opened chat window for term: ${term}`);
-    console.log(`Line of code: ${line}`);
-    console.log(`Full document:\n${fullDocument}`);
 }
 exports.openChatWindow = openChatWindow;
 //# sourceMappingURL=deepDive.js.map
