@@ -154,7 +154,7 @@ export function getWebviewContent(term: string): string {
                 <div id="messages"></div>
             </div>
             <input id="input" type="text" style="width: 90%;" placeholder="Ask a question..." />
-            <button onclick="sendMessage()">Send</button>
+            <button id="send-button" onclick="sendMessage()">Send</button>
             <script>
                 const vscode = acquireVsCodeApi();
                 let currentGPTMessage = null;
@@ -171,6 +171,14 @@ export function getWebviewContent(term: string): string {
                         input.value = '';
                     }
                 }
+
+                // Enable "Enter" to send messages
+                document.getElementById('input').addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        sendMessage();
+                    }
+                });
 
                 window.addEventListener('message', (event) => {
                     const chat = document.getElementById('messages');
