@@ -29,7 +29,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.openChatWindow = exports.getWebviewContent = exports.fetchGPTAnswer = exports.fetchGPTDefinition = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
-async function fetchGPTDefinition(term, line, fullDocument) {
+//This "deep dive" module allows the user to investigate a specific term in more detail.
+//The intent is to also have functionality to explain how it is used in relation to code throughout the codebase.
+async function fetchGPTDefinition(term, line, fullDocument, updateCallback, endCallback) {
     try {
         const response = await axios_1.default.post('https://api.openai.com/v1/chat/completions', {
             model: "gpt-4o-mini",
@@ -39,75 +41,147 @@ async function fetchGPTDefinition(term, line, fullDocument) {
                 { role: "user", content: `Also provide a 1000 character summary of what "${term}" is being used for in this line of code: "${line}"` },
                 { role: "user", content: `Lastly, if applicable, provide a 1000 character summary of how "${term}" is being used throughout this document: "${fullDocument}"` },
                 { role: "user", content: `Separate each section with a double line break, but otherwise do not make any indication of division between these outputs.` }
-            ]
+            ],
+            stream: true,
         }, {
-            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+            headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            responseType: 'stream',
         });
-        return response.data.choices[0].message.content.trim();
+        const stream = response.data;
+        let buffer = '';
+        stream.on('data', (chunk) => {
+            buffer += chunk.toString('utf8');
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const json = line.slice(6).trim();
+                    if (json === '[DONE]') {
+                        endCallback();
+                        return;
+                    }
+                    try {
+                        const parsed = JSON.parse(json);
+                        if (parsed.choices && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                            updateCallback(parsed.choices[0].delta.content);
+                        }
+                    }
+                    catch (error) {
+                        console.error('Error parsing JSON chunk:', error, json);
+                    }
+                }
+            }
+        });
+        stream.on('end', () => {
+            console.log("Stream ended.");
+            endCallback();
+        });
     }
     catch (error) {
-        console.error("Error fetching GPT definition:", error);
-        return "Sorry, I couldn't fetch a definition for this term.";
+        console.error("Error fetching GPT response:", error);
+        updateCallback("Sorry, I couldn't fetch a response.");
+        endCallback();
     }
 }
 exports.fetchGPTDefinition = fetchGPTDefinition;
-async function fetchGPTAnswer(noun, question) {
+async function fetchGPTAnswer(term, question, updateCallback, endCallback) {
     try {
         const response = await axios_1.default.post('https://api.openai.com/v1/chat/completions', {
             model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: "You are a programming assistant answering questions." },
-                { role: "user", content: `We are discussing "${noun}". Question: ${question}` }
-            ]
+                { role: "user", content: `We are discussing "${term}". Question: ${question}` }
+            ],
+            stream: true,
         }, {
-            headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+            headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            responseType: 'stream',
         });
-        return response.data.choices[0].message.content.trim();
+        const stream = response.data;
+        let buffer = '';
+        stream.on('data', (chunk) => {
+            buffer += chunk.toString('utf8');
+            // Split the buffer into individual `data:` lines
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in the buffer
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const json = line.slice(6).trim(); // Remove `data: ` prefix
+                    if (json === '[DONE]') {
+                        endCallback();
+                        return;
+                    }
+                    try {
+                        const parsed = JSON.parse(json);
+                        if (parsed.choices && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                            updateCallback(parsed.choices[0].delta.content);
+                        }
+                    }
+                    catch (error) {
+                        console.error('Error parsing JSON chunk:', error, json);
+                    }
+                }
+            }
+        });
+        stream.on('end', () => {
+            console.log("Stream ended.");
+            endCallback();
+        });
     }
     catch (error) {
         console.error("Error fetching GPT response:", error);
-        return "Sorry, I couldn't fetch a response.";
+        updateCallback("Sorry, I couldn't fetch a response.");
+        endCallback();
     }
 }
 exports.fetchGPTAnswer = fetchGPTAnswer;
-function getWebviewContent(noun, initialResponse) {
+function getWebviewContent(term) {
     return `
         <html>
         <body>
-            <h1>Discussion: ${noun}</h1>
-            <div id="chat" style="overflow-y: auto; height: 400px; border: 1px solid #ccc; padding: 10px;">
-                <div><strong>GPT:</strong> ${initialResponse}</div>
+            <h1>Discussion: ${term}</h1>
+            <div id="chat" style="overflow-y: auto; height: 400px; border: 1px solid #ddd; padding: 10px;">
+                <div id="messages"></div>
             </div>
-            <input id="input" type="text" style="width: 90%; margin-top: 10px;" placeholder="Ask a question..." />
-            <button onclick="sendMessage()" style="width: 8%; margin-top: 10px;">Send</button>
+            <input id="input" type="text" style="width: 90%;" placeholder="Ask a question..." />
+            <button onclick="sendMessage()">Send</button>
             <script>
                 const vscode = acquireVsCodeApi();
+                let currentGPTMessage = null;
 
                 function sendMessage() {
                     const input = document.getElementById('input');
-                    const chat = document.getElementById('chat');
-                    
-                    // Display user's message in the chat
-                    const userMessage = document.createElement('div');
-                    userMessage.innerHTML = '<strong>You:</strong> ' + input.value;
-                    chat.appendChild(userMessage);
-                    
-                    // Scroll to the bottom of the chat
-                    chat.scrollTop = chat.scrollHeight;
+                    const message = input.value.trim();
+                    if (message) {
+                        const chat = document.getElementById('messages');
+                        chat.innerHTML += '<div><strong>You:</strong> ' + message + '</div>';
+                        chat.scrollTop = chat.scrollHeight;
 
-                    // Send the message to the extension
-                    vscode.postMessage({ command: 'askGPT', text: input.value });
-                    input.value = ''; // Clear input field
+                        vscode.postMessage({ command: 'askGPT', text: message });
+                        input.value = '';
+                    }
                 }
 
                 window.addEventListener('message', (event) => {
-                    const chat = document.getElementById('chat');
-                    const gptMessage = document.createElement('div');
-                    gptMessage.innerHTML = '<strong>GPT:</strong> ' + event.data.response;
-                    chat.appendChild(gptMessage);
-
-                    // Scroll to the bottom of the chat
-                    chat.scrollTop = chat.scrollHeight;
+                    const chat = document.getElementById('messages');
+                    if (event.data.command === 'gptResponseChunk') {
+                        if (!currentGPTMessage) {
+                            currentGPTMessage = document.createElement('div');
+                            currentGPTMessage.innerHTML = '<strong>GPT:</strong> ';
+                            chat.appendChild(currentGPTMessage);
+                        }
+                        currentGPTMessage.innerHTML += event.data.response;
+                        chat.scrollTop = chat.scrollHeight;
+                    } else if (event.data.command === 'gptResponseEnd') {
+                        currentGPTMessage = null; // Reset for the next message
+                        chat.scrollTop = chat.scrollHeight;
+                    }
                 });
             </script>
         </body>
@@ -115,22 +189,40 @@ function getWebviewContent(noun, initialResponse) {
     `;
 }
 exports.getWebviewContent = getWebviewContent;
-// Open the chat window
 async function openChatWindow(term, line, fullDocument) {
     const panel = vscode.window.createWebviewPanel('codeExplainerChat', // Identifier
     `Chat: ${term}`, // Title
     vscode.ViewColumn.Two, // Show on the right side
     { enableScripts: true });
-    // Initial GPT response
-    const initialResponse = await fetchGPTDefinition(term, line, fullDocument);
-    // HTML content for the webview
-    panel.webview.html = getWebviewContent(term, initialResponse);
-    // Handle messages from the webview
+    // Set initial placeholder content
+    panel.webview.html = getWebviewContent(term);
+    // Fetch the initial GPT response
+    try {
+        await fetchGPTDefinition(term, line, fullDocument, (chunk) => {
+            panel.webview.postMessage({ command: 'gptResponseChunk', response: chunk });
+        }, () => {
+            panel.webview.postMessage({ command: 'gptResponseEnd' });
+        });
+    }
+    catch (error) {
+        console.error("Error fetching GPT definition:", error);
+        panel.webview.postMessage({ command: 'gptResponseChunk', response: "Sorry, an error occurred while fetching the definition." });
+        panel.webview.postMessage({ command: 'gptResponseEnd' });
+    }
+    // Handle subsequent user messages
     panel.webview.onDidReceiveMessage(async (message) => {
         if (message.command === 'askGPT') {
             const question = message.text;
-            const response = await fetchGPTAnswer(term, question);
-            panel.webview.postMessage({ command: 'gptResponse', response });
+            try {
+                await fetchGPTAnswer(term, question, (chunk) => {
+                    panel.webview.postMessage({ command: 'gptResponseChunk', response: chunk });
+                }, () => {
+                    panel.webview.postMessage({ command: 'gptResponseEnd' });
+                });
+            }
+            catch (error) {
+                console.error("Error handling user question:", error);
+            }
         }
     });
 }
