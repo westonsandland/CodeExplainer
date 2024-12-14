@@ -160,7 +160,7 @@ async function provideHoverSummary(document, position) {
         if (codeSummary.includes('<term>line</term>')) {
             codeSummary = codeSummary.replace(/<term>line<\/term>/g, 'line');
         }
-        // Transform <term> tags into clickable links
+        // Transform <term> tags into clickable links with clean tooltips
         const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
             const commandArgs = JSON.stringify({
                 term,
@@ -168,7 +168,7 @@ async function provideHoverSummary(document, position) {
                 document: fullDocumentText,
             });
             const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(commandArgs)}`;
-            return `[${term}](${commandLink})`;
+            return `[${term}](${commandLink} "Chat with GPT about ${term}")`;
         });
         // Cache the processed summary
         const formattedSummary = new vscode.MarkdownString(enhancedSummary);
