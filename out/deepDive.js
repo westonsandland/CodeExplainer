@@ -143,26 +143,85 @@ async function fetchGPTAnswer(term, question, updateCallback, endCallback) {
 exports.fetchGPTAnswer = fetchGPTAnswer;
 function getWebviewContent(term) {
     return `
-        <html>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Discussion: ${term}</title>
+            <link
+                href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+                rel="stylesheet"
+            />
+            <style>
+                .chat-container {
+                    height: 400px;
+                    border: 1px solid #ccc;
+                    border-radius: 5px;
+                    overflow-y: auto;
+                    background-color: #f8f9fa;
+                    padding: 10px;
+                }
+                .chat-message {
+                    margin-bottom: 10px;
+                    border-radius: 15px;
+                    padding: 10px;
+                    max-width: 75%;
+                }
+                .chat-message.sent {
+                    background-color: #0d6efd;
+                    color: white;
+                    margin-left: auto;
+                }
+                .chat-message.received {
+                    background-color: #e9ecef;
+                    color: black;
+                }
+            </style>
+        </head>
         <body>
-            <h1>Discussion: ${term}</h1>
-            <div id="chat" style="overflow-y: auto; height: 400px; border: 1px solid #ddd; padding: 10px;">
-                <div id="messages"></div>
+            <div class="container mt-3">
+                <h3 class="text-center">Discussion: ${term}</h3>
+                <div id="chat" class="chat-container">
+                    <div id="messages">
+                        <!-- Messages will appear here -->
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="input-group">
+                        <input
+                            id="input"
+                            type="text"
+                            class="form-control"
+                            placeholder="Ask a question..."
+                        />
+                        <button id="send-button" class="btn btn-primary">Send</button>
+                    </div>
+                </div>
             </div>
-            <input id="input" type="text" style="width: 90%;" placeholder="Ask a question..." />
-            <button id="send-button" onclick="sendMessage()">Send</button>
             <script>
                 const vscode = acquireVsCodeApi();
                 let currentGPTMessage = null;
 
+                // Function to add messages to the chat
+                function addMessage(content, isSent) {
+                    const messagesDiv = document.getElementById('messages');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = \`chat-message \${isSent ? 'sent' : 'received'}\`;
+                    messageDiv.innerHTML = content;
+                    messagesDiv.appendChild(messageDiv);
+
+                    // Auto-scroll to bottom
+                    const chatDiv = document.getElementById('chat');
+                    chatDiv.scrollTop = chatDiv.scrollHeight;
+                }
+
+                // Send message to GPT
                 function sendMessage() {
                     const input = document.getElementById('input');
                     const message = input.value.trim();
                     if (message) {
-                        const chat = document.getElementById('messages');
-                        chat.innerHTML += '<div><strong>You:</strong> ' + message + '</div>';
-                        chat.scrollTop = chat.scrollHeight;
-
+                        addMessage('<strong>You:</strong> ' + message, true);
                         vscode.postMessage({ command: 'askGPT', text: message });
                         input.value = '';
                     }
@@ -176,19 +235,24 @@ function getWebviewContent(term) {
                     }
                 });
 
+                // Send button event listener
+                document.getElementById('send-button').addEventListener('click', sendMessage);
+
+                // Handle GPT responses
                 window.addEventListener('message', (event) => {
                     const chat = document.getElementById('messages');
                     if (event.data.command === 'gptResponseChunk') {
                         if (!currentGPTMessage) {
                             currentGPTMessage = document.createElement('div');
+                            currentGPTMessage.className = 'chat-message received';
                             currentGPTMessage.innerHTML = '<strong>GPT:</strong> ';
                             chat.appendChild(currentGPTMessage);
                         }
                         currentGPTMessage.innerHTML += event.data.response;
-                        chat.scrollTop = chat.scrollHeight;
+                        document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
                     } else if (event.data.command === 'gptResponseEnd') {
                         currentGPTMessage = null; // Reset for the next message
-                        chat.scrollTop = chat.scrollHeight;
+                        document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
                     }
                 });
             </script>
