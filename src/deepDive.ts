@@ -206,59 +206,125 @@ export function getWebviewContent(term: string): string {
             <script>
                 const vscode = acquireVsCodeApi();
                 let currentGPTMessage = null;
+                let parsingBuffer = ""; // Buffer to hold chunks of GPT's response
+                let formattingState = []; // Stack to track ongoing formatting instructions
 
-                // Function to add messages to the chat
-                function addMessage(content, isSent) {
-                    const messagesDiv = document.getElementById('messages');
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = \`chat-message \${isSent ? 'sent' : 'received'}\`;
-                    messageDiv.innerHTML = content;
-                    messagesDiv.appendChild(messageDiv);
+                function escapeHtml(text) {
+                    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+                    return text.replace(/[&<>"']/g, (m) => map[m]);
+                }
 
-                    // Auto-scroll to bottom
-                    const chatDiv = document.getElementById('chat');
+                function applyFormatting(buffer) {
+                    // This function processes the buffer for complete Markdown formatting
+                    let output = "";
+                    let i = 0;
+
+                    while (i < buffer.length) {
+                        const char = buffer[i];
+
+                        // Bold detection: Look for "**"
+                        if (buffer.substring(i, i + 2) === "**") {
+                            if (formattingState.length && formattingState[formattingState.length - 1] === "bold") {
+                                output += "</strong>";
+                                formattingState.pop();
+                            } else {
+                                output += "<strong>";
+                                formattingState.push("bold");
+                            }
+                            i += 2;
+                            continue;
+                        }
+
+                        // Link detection: Look for [text](url)
+                        if (buffer[i] === "[" && !formattingState.includes("link")) {
+                            const linkTextEnd = buffer.indexOf("]", i);
+                            const linkUrlStart = buffer.indexOf("(", linkTextEnd);
+                            const linkUrlEnd = buffer.indexOf(")", linkUrlStart);
+
+                            if (linkTextEnd > -1 && linkUrlStart > -1 && linkUrlEnd > -1) {
+                                const text = buffer.substring(i + 1, linkTextEnd);
+                                const url = buffer.substring(linkUrlStart + 1, linkUrlEnd);
+
+                                output += \`<a href="\${escapeHtml(url)}" target="_blank">\${escapeHtml(text)}</a>\`;
+                                i = linkUrlEnd + 1;
+                                continue;
+                            }
+                        }
+
+                        output += escapeHtml(char);
+                        i++;
+                    }
+
+                    return output;
+                }
+
+                function processStreamedChunk(chunk) {
+                    parsingBuffer += chunk; // Add the new chunk to the parsing buffer
+                    const renderedContent = applyFormatting(parsingBuffer);
+
+                    if (!currentGPTMessage) {
+                        currentGPTMessage = document.createElement("div");
+                        currentGPTMessage.className = "chat-message received";
+                        currentGPTMessage.innerHTML = "<strong>GPT:</strong> ";
+                        document.getElementById("messages").appendChild(currentGPTMessage);
+                    }
+
+                    // Update the message content dynamically
+                    currentGPTMessage.innerHTML = \`<strong>GPT:</strong> \${renderedContent}\`;
+
+                    // Auto-scroll
+                    const chatDiv = document.getElementById("chat");
                     chatDiv.scrollTop = chatDiv.scrollHeight;
                 }
 
+                function finishMessage() {
+                    currentGPTMessage = null; // Reset the message state
+                    parsingBuffer = ""; // Clear the buffer
+                    formattingState = []; // Reset formatting state
+                }
+
+                // Handle GPT responses
+                window.addEventListener("message", (event) => {
+                    if (event.data.command === "gptResponseChunk") {
+                        processStreamedChunk(event.data.response);
+                    } else if (event.data.command === "gptResponseEnd") {
+                        finishMessage();
+                    }
+                });
+
                 // Send message to GPT
                 function sendMessage() {
-                    const input = document.getElementById('input');
+                    const input = document.getElementById("input");
                     const message = input.value.trim();
                     if (message) {
                         addMessage('<strong>You:</strong> ' + message, true);
-                        vscode.postMessage({ command: 'askGPT', text: message });
-                        input.value = '';
+                        vscode.postMessage({ command: "askGPT", text: message });
+                        input.value = "";
                     }
                 }
 
+                // Add user message
+                function addMessage(content, isSent) {
+                    const messagesDiv = document.getElementById("messages");
+                    const messageDiv = document.createElement("div");
+                    messageDiv.className = \`chat-message \${isSent ? "sent" : "received"}\`;
+                    messageDiv.innerHTML = content;
+                    messagesDiv.appendChild(messageDiv);
+
+                    // Auto-scroll
+                    const chatDiv = document.getElementById("chat");
+                    chatDiv.scrollTop = chatDiv.scrollHeight;
+                }
+
                 // Enable "Enter" to send messages
-                document.getElementById('input').addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                document.getElementById("input").addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
                         sendMessage();
                     }
                 });
 
-                // Send button event listener
-                document.getElementById('send-button').addEventListener('click', sendMessage);
-
-                // Handle GPT responses
-                window.addEventListener('message', (event) => {
-                    const chat = document.getElementById('messages');
-                    if (event.data.command === 'gptResponseChunk') {
-                        if (!currentGPTMessage) {
-                            currentGPTMessage = document.createElement('div');
-                            currentGPTMessage.className = 'chat-message received';
-                            currentGPTMessage.innerHTML = '<strong>GPT:</strong> ';
-                            chat.appendChild(currentGPTMessage);
-                        }
-                        currentGPTMessage.innerHTML += event.data.response;
-                        document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
-                    } else if (event.data.command === 'gptResponseEnd') {
-                        currentGPTMessage = null; // Reset for the next message
-                        document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
-                    }
-                });
+                document.getElementById("send-button").addEventListener("click", sendMessage);
             </script>
         </body>
         </html>
