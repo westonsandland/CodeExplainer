@@ -151,63 +151,76 @@ export function getWebviewContent(term: string): string {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
+            <!-- Allow the webview to support both light and dark modes -->
+            <meta name="color-scheme" content="light dark">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Discussion: ${term}</title>
+            <!-- Import Bootstrap for layout and component styling -->
             <link
                 href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
                 rel="stylesheet"
             />
             <style>
+                /* Use VS Code's theme colors for overall background and text */
+                body {
+                    background-color: var(--vscode-editor-background);
+                    color: var(--vscode-editor-foreground);
+                }
+                /* Chat container colors */
                 .chat-container {
-                    height: 400px;
-                    border: 1px solid #ccc;
-                    border-radius: 5px;
-                    overflow-y: auto;
-                    background-color: #f8f9fa;
-                    padding: 10px;
+                    background-color: var(--vscode-editor-background);
+                    border: 1px solid var(--vscode-editorWidget-border);
                 }
-                .chat-message {
-                    margin-bottom: 10px;
-                    border-radius: 15px;
-                    padding: 10px;
-                    max-width: 75%;
+                /* Override Bootstrap button colors to match VS Code */
+                .btn, .btn-primary {
+                    background-color: var(--vscode-button-background) !important;
+                    color: var(--vscode-button-foreground) !important;
+                    border-color: var(--vscode-button-background) !important;
                 }
+                /* Override input field colors to match VS Code */
+                .form-control {
+                    background-color: var(--vscode-editor-background) !important;
+                    color: var(--vscode-editor-foreground) !important;
+                    border: 1px solid var(--vscode-editorWidget-border) !important;
+                }
+                /* Override link colors */
+                a {
+                    color: var(--vscode-textLink-foreground) !important;
+                }
+                /* Override chat message colors */
                 .chat-message.sent {
-                    background-color: #0d6efd;
-                    color: white;
-                    margin-left: auto;
+                    background-color: var(--vscode-button-background) !important;
+                    color: var(--vscode-button-foreground) !important;
                 }
                 .chat-message.received {
-                    background-color: #e9ecef;
-                    color: black;
+                    background-color: var(--vscode-editorWidget-background) !important;
+                    color: var(--vscode-editor-foreground) !important;
                 }
             </style>
         </head>
         <body>
             <div class="container mt-3">
                 <h3 class="text-center">Discussion: ${term}</h3>
-                <div id="chat" class="chat-container">
+                <div id="chat" class="chat-container p-2 mb-3">
                     <div id="messages">
                         <!-- Messages will appear here -->
                     </div>
                 </div>
-                <div class="mt-3">
-                    <div class="input-group">
-                        <input
-                            id="input"
-                            type="text"
-                            class="form-control"
-                            placeholder="Ask a question..."
-                        />
-                        <button id="send-button" class="btn btn-primary">Send</button>
-                    </div>
+                <div class="input-group">
+                    <input
+                        id="input"
+                        type="text"
+                        class="form-control"
+                        placeholder="Ask a question..."
+                    />
+                    <button id="send-button" class="btn btn-primary">Send</button>
                 </div>
             </div>
             <script>
                 const vscode = acquireVsCodeApi();
                 let currentGPTMessage = null;
-                let parsingBuffer = ""; // Buffer to hold chunks of GPT's response
-                let formattingState = []; // Stack to track ongoing formatting instructions
+                let parsingBuffer = "";
+                let formattingState = [];
 
                 function escapeHtml(text) {
                     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
@@ -215,14 +228,10 @@ export function getWebviewContent(term: string): string {
                 }
 
                 function applyFormatting(buffer) {
-                    // This function processes the buffer for complete Markdown formatting
                     let output = "";
                     let i = 0;
-
                     while (i < buffer.length) {
-                        const char = buffer[i];
-
-                        // Bold detection: Look for "**"
+                        // Bold formatting: toggle on "**"
                         if (buffer.substring(i, i + 2) === "**") {
                             if (formattingState.length && formattingState[formattingState.length - 1] === "bold") {
                                 output += "</strong>";
@@ -234,56 +243,48 @@ export function getWebviewContent(term: string): string {
                             i += 2;
                             continue;
                         }
-
-                        // Link detection: Look for [text](url)
+                        // Link formatting: detect [text](url)
                         if (buffer[i] === "[" && !formattingState.includes("link")) {
                             const linkTextEnd = buffer.indexOf("]", i);
                             const linkUrlStart = buffer.indexOf("(", linkTextEnd);
                             const linkUrlEnd = buffer.indexOf(")", linkUrlStart);
-
                             if (linkTextEnd > -1 && linkUrlStart > -1 && linkUrlEnd > -1) {
                                 const text = buffer.substring(i + 1, linkTextEnd);
                                 const url = buffer.substring(linkUrlStart + 1, linkUrlEnd);
-
                                 output += \`<a href="\${escapeHtml(url)}" target="_blank">\${escapeHtml(text)}</a>\`;
                                 i = linkUrlEnd + 1;
                                 continue;
                             }
                         }
-
-                        output += escapeHtml(char);
+                        output += escapeHtml(buffer[i]);
                         i++;
                     }
-
                     return output;
                 }
 
                 function processStreamedChunk(chunk) {
-                    parsingBuffer += chunk; // Add the new chunk to the parsing buffer
+                    parsingBuffer += chunk;
                     const renderedContent = applyFormatting(parsingBuffer);
-
+                    
                     if (!currentGPTMessage) {
                         currentGPTMessage = document.createElement("div");
-                        currentGPTMessage.className = "chat-message received";
+                        currentGPTMessage.className = "chat-message received p-2 mb-2";
                         currentGPTMessage.innerHTML = "<strong>GPT:</strong> ";
                         document.getElementById("messages").appendChild(currentGPTMessage);
                     }
-
-                    // Update the message content dynamically
                     currentGPTMessage.innerHTML = \`<strong>GPT:</strong> \${renderedContent}\`;
-
-                    // Auto-scroll
+                    
+                    // Auto-scroll the chat container
                     const chatDiv = document.getElementById("chat");
                     chatDiv.scrollTop = chatDiv.scrollHeight;
                 }
 
                 function finishMessage() {
-                    currentGPTMessage = null; // Reset the message state
-                    parsingBuffer = ""; // Clear the buffer
-                    formattingState = []; // Reset formatting state
+                    currentGPTMessage = null;
+                    parsingBuffer = "";
+                    formattingState = [];
                 }
 
-                // Handle GPT responses
                 window.addEventListener("message", (event) => {
                     if (event.data.command === "gptResponseChunk") {
                         processStreamedChunk(event.data.response);
@@ -292,7 +293,6 @@ export function getWebviewContent(term: string): string {
                     }
                 });
 
-                // Send message to GPT
                 function sendMessage() {
                     const input = document.getElementById("input");
                     const message = input.value.trim();
@@ -303,20 +303,17 @@ export function getWebviewContent(term: string): string {
                     }
                 }
 
-                // Add user message
                 function addMessage(content, isSent) {
                     const messagesDiv = document.getElementById("messages");
                     const messageDiv = document.createElement("div");
-                    messageDiv.className = \`chat-message \${isSent ? "sent" : "received"}\`;
+                    messageDiv.className = \`chat-message \${isSent ? "sent" : "received"} p-2 mb-2\`;
                     messageDiv.innerHTML = content;
                     messagesDiv.appendChild(messageDiv);
-
-                    // Auto-scroll
+                    
                     const chatDiv = document.getElementById("chat");
                     chatDiv.scrollTop = chatDiv.scrollHeight;
                 }
 
-                // Enable "Enter" to send messages
                 document.getElementById("input").addEventListener("keydown", (event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
