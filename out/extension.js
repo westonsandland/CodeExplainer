@@ -30,6 +30,7 @@ exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
 const deepDive_1 = require("./deepDive");
+const constants_1 = require("./constants");
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map();
 // Function to get the current experience level setting globally
@@ -93,7 +94,7 @@ async function fetchCodeSummaryFromApi(codeToSummarize, fullDocumentContext, exp
     if (!apiKey) {
         throw new Error('API key is not set in the environment variables');
     }
-    const apiUrl = 'https://api.openai.com/v1/chat/completions';
+    const apiUrl = constants_1.GENAI_BASE_URL;
     const payload = buildApiRequestPayload(codeToSummarize, fullDocumentContext, experienceLevel, tokenMaximum);
     try {
         const response = await axios_1.default.post(apiUrl, payload, {

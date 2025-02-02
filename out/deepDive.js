@@ -29,11 +29,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.openChatWindow = exports.getWebviewContent = exports.fetchGPTAnswer = exports.fetchGPTDefinition = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
+const constants_1 = require("./constants");
 //This "deep dive" module allows the user to investigate a specific term in more detail.
 //The intent is to also have functionality to explain how it is used in relation to code throughout the codebase.
 async function fetchGPTDefinition(term, line, fullDocument, updateCallback, endCallback) {
     try {
-        const response = await axios_1.default.post('https://api.openai.com/v1/chat/completions', {
+        const response = await axios_1.default.post(constants_1.GENAI_BASE_URL, {
             model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: "You are a programming assistant explaining what a specific programming term means." },
@@ -89,7 +90,7 @@ async function fetchGPTDefinition(term, line, fullDocument, updateCallback, endC
 exports.fetchGPTDefinition = fetchGPTDefinition;
 async function fetchGPTAnswer(term, question, updateCallback, endCallback) {
     try {
-        const response = await axios_1.default.post('https://api.openai.com/v1/chat/completions', {
+        const response = await axios_1.default.post(constants_1.GENAI_BASE_URL, {
             model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: "You are a programming assistant answering questions." },

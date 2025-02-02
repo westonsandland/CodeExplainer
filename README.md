@@ -22,3 +22,7 @@
 ## License
 
 [MIT](LICENSE)
+
+## Features to be added
+
+- Optimize the activation conditions. This may impact people's IDE performance if we don't activate it at the right time.
