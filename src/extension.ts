@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { openChatWindow } from './deepDive';
+import { GENAI_BASE_URL } from './constants';
 
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map<string, Map<number, string>>();
@@ -81,7 +82,7 @@ async function fetchCodeSummaryFromApi(
         throw new Error('API key is not set in the environment variables');
     }
 
-    const apiUrl = 'https://api.openai.com/v1/chat/completions';
+    const apiUrl = GENAI_BASE_URL;
     const payload = buildApiRequestPayload(codeToSummarize, fullDocumentContext, experienceLevel, tokenMaximum);
 
     try {

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { Readable } from 'stream';
-
+import { GENAI_BASE_URL } from './constants';
 //This "deep dive" module allows the user to investigate a specific term in more detail.
 //The intent is to also have functionality to explain how it is used in relation to code throughout the codebase.
 
@@ -14,7 +14,7 @@ export async function fetchGPTDefinition(
 ): Promise<void> {
     try {
         const response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
+            GENAI_BASE_URL,
             {
                 model: "gpt-4o-mini",
                 messages: [
@@ -85,7 +85,7 @@ export async function fetchGPTAnswer(
 ): Promise<void> {
     try {
         const response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
+            GENAI_BASE_URL,
             {
                 model: "gpt-4o-mini",
                 messages: [
