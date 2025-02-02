@@ -1,0 +1,1 @@
+export const GENAI_BASE_URL = "https://genai-proxy.westonsandland.workers.dev"
