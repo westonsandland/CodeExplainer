@@ -28,6 +28,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.openChatWindow = exports.getWebviewContent = exports.fetchGPTAnswer = exports.fetchGPTDefinition = void 0;
 const vscode = __importStar(require("vscode"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 const axios_1 = __importDefault(require("axios"));
 const constants_1 = require("./constants");
 //This "deep dive" module allows the user to investigate a specific term in more detail.
@@ -142,197 +144,23 @@ async function fetchGPTAnswer(term, question, updateCallback, endCallback) {
     }
 }
 exports.fetchGPTAnswer = fetchGPTAnswer;
-function getWebviewContent(term) {
-    return `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <!-- Allow the webview to support both light and dark modes -->
-            <meta name="color-scheme" content="light dark">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Discussion: ${term}</title>
-            <!-- Import Bootstrap for layout and component styling -->
-            <link
-                href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-                rel="stylesheet"
-            />
-            <style>
-                /* Use VS Code's theme colors for overall background and text */
-                body {
-                    background-color: var(--vscode-editor-background);
-                    color: var(--vscode-editor-foreground);
-                }
-                /* Chat container colors */
-                .chat-container {
-                    background-color: var(--vscode-editor-background);
-                    border: 1px solid var(--vscode-editorWidget-border);
-                }
-                /* Override Bootstrap button colors to match VS Code */
-                .btn, .btn-primary {
-                    background-color: var(--vscode-button-background) !important;
-                    color: var(--vscode-button-foreground) !important;
-                    border-color: var(--vscode-button-background) !important;
-                }
-                /* Override input field colors to match VS Code */
-                .form-control {
-                    background-color: var(--vscode-editor-background) !important;
-                    color: var(--vscode-editor-foreground) !important;
-                    border: 1px solid var(--vscode-editorWidget-border) !important;
-                }
-                /* Override link colors */
-                a {
-                    color: var(--vscode-textLink-foreground) !important;
-                }
-                /* Override chat message colors */
-                .chat-message.sent {
-                    background-color: var(--vscode-button-background) !important;
-                    color: var(--vscode-button-foreground) !important;
-                }
-                .chat-message.received {
-                    background-color: var(--vscode-editorWidget-background) !important;
-                    color: var(--vscode-editor-foreground) !important;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container mt-3">
-                <h3 class="text-center">Discussion: ${term}</h3>
-                <div id="chat" class="chat-container p-2 mb-3">
-                    <div id="messages">
-                        <!-- Messages will appear here -->
-                    </div>
-                </div>
-                <div class="input-group">
-                    <input
-                        id="input"
-                        type="text"
-                        class="form-control"
-                        placeholder="Ask a question..."
-                    />
-                    <button id="send-button" class="btn btn-primary">Send</button>
-                </div>
-            </div>
-            <script>
-                const vscode = acquireVsCodeApi();
-                let currentGPTMessage = null;
-                let parsingBuffer = "";
-                let formattingState = [];
-
-                function escapeHtml(text) {
-                    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
-                    return text.replace(/[&<>"']/g, (m) => map[m]);
-                }
-
-                function applyFormatting(buffer) {
-                    let output = "";
-                    let i = 0;
-                    while (i < buffer.length) {
-                        // Bold formatting: toggle on "**"
-                        if (buffer.substring(i, i + 2) === "**") {
-                            if (formattingState.length && formattingState[formattingState.length - 1] === "bold") {
-                                output += "</strong>";
-                                formattingState.pop();
-                            } else {
-                                output += "<strong>";
-                                formattingState.push("bold");
-                            }
-                            i += 2;
-                            continue;
-                        }
-                        // Link formatting: detect [text](url)
-                        if (buffer[i] === "[" && !formattingState.includes("link")) {
-                            const linkTextEnd = buffer.indexOf("]", i);
-                            const linkUrlStart = buffer.indexOf("(", linkTextEnd);
-                            const linkUrlEnd = buffer.indexOf(")", linkUrlStart);
-                            if (linkTextEnd > -1 && linkUrlStart > -1 && linkUrlEnd > -1) {
-                                const text = buffer.substring(i + 1, linkTextEnd);
-                                const url = buffer.substring(linkUrlStart + 1, linkUrlEnd);
-                                output += \`<a href="\${escapeHtml(url)}" target="_blank">\${escapeHtml(text)}</a>\`;
-                                i = linkUrlEnd + 1;
-                                continue;
-                            }
-                        }
-                        output += escapeHtml(buffer[i]);
-                        i++;
-                    }
-                    return output;
-                }
-
-                function processStreamedChunk(chunk) {
-                    parsingBuffer += chunk;
-                    const renderedContent = applyFormatting(parsingBuffer);
-                    
-                    if (!currentGPTMessage) {
-                        currentGPTMessage = document.createElement("div");
-                        currentGPTMessage.className = "chat-message received p-2 mb-2";
-                        currentGPTMessage.innerHTML = "<strong>GPT:</strong> ";
-                        document.getElementById("messages").appendChild(currentGPTMessage);
-                    }
-                    currentGPTMessage.innerHTML = \`<strong>GPT:</strong> \${renderedContent}\`;
-                    
-                    // Auto-scroll the chat container
-                    const chatDiv = document.getElementById("chat");
-                    chatDiv.scrollTop = chatDiv.scrollHeight;
-                }
-
-                function finishMessage() {
-                    currentGPTMessage = null;
-                    parsingBuffer = "";
-                    formattingState = [];
-                }
-
-                window.addEventListener("message", (event) => {
-                    if (event.data.command === "gptResponseChunk") {
-                        processStreamedChunk(event.data.response);
-                    } else if (event.data.command === "gptResponseEnd") {
-                        finishMessage();
-                    }
-                });
-
-                function sendMessage() {
-                    const input = document.getElementById("input");
-                    const message = input.value.trim();
-                    if (message) {
-                        addMessage('<strong>You:</strong> ' + message, true);
-                        vscode.postMessage({ command: "askGPT", text: message });
-                        input.value = "";
-                    }
-                }
-
-                function addMessage(content, isSent) {
-                    const messagesDiv = document.getElementById("messages");
-                    const messageDiv = document.createElement("div");
-                    messageDiv.className = \`chat-message \${isSent ? "sent" : "received"} p-2 mb-2\`;
-                    messageDiv.innerHTML = content;
-                    messagesDiv.appendChild(messageDiv);
-                    
-                    const chatDiv = document.getElementById("chat");
-                    chatDiv.scrollTop = chatDiv.scrollHeight;
-                }
-
-                document.getElementById("input").addEventListener("keydown", (event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        sendMessage();
-                    }
-                });
-
-                document.getElementById("send-button").addEventListener("click", sendMessage);
-            </script>
-        </body>
-        </html>
-    `;
+function getWebviewContent(context, term) {
+    const htmlPath = path.join(context.extensionPath, 'src', 'webviewContent.html');
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    // Replace placeholder(s) with dynamic content.
+    html = html.replace(/%TERM%/g, term);
+    return html;
 }
 exports.getWebviewContent = getWebviewContent;
-async function openChatWindow(term, line, fullDocument) {
+async function openChatWindow(context, term, line, fullDocument) {
     const panel = vscode.window.createWebviewPanel('codeExplainerChat', // Identifier
     `Chat: ${term}`, // Title
     vscode.ViewColumn.Two, // Show on the right side
     { enableScripts: true });
-    // Set initial placeholder content
-    panel.webview.html = getWebviewContent(term);
-    // Fetch the initial GPT response
+    // Set the webview's HTML content by reading from the separate file.
+    panel.webview.html = getWebviewContent(context, term);
+    // (Note: you might need to pass the extension context instead of panel.extensionUri.)
+    // Fetch the initial GPT response and stream it into the webview.
     try {
         await fetchGPTDefinition(term, line, fullDocument, (chunk) => {
             panel.webview.postMessage({ command: 'gptResponseChunk', response: chunk });
@@ -345,7 +173,7 @@ async function openChatWindow(term, line, fullDocument) {
         panel.webview.postMessage({ command: 'gptResponseChunk', response: "Sorry, an error occurred while fetching the definition." });
         panel.webview.postMessage({ command: 'gptResponseEnd' });
     }
-    // Handle subsequent user messages
+    // Handle subsequent user messages.
     panel.webview.onDidReceiveMessage(async (message) => {
         if (message.command === 'askGPT') {
             const question = message.text;

@@ -197,7 +197,7 @@ function activate(context) {
         const line = args === null || args === void 0 ? void 0 : args.line;
         const fullDocument = args === null || args === void 0 ? void 0 : args.document;
         if (term && line && fullDocument) {
-            await (0, deepDive_1.openChatWindow)(term, line, fullDocument);
+            await (0, deepDive_1.openChatWindow)(context, term, line, fullDocument);
         }
     }));
 }

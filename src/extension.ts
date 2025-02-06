@@ -203,7 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
             const fullDocument = args?.document;
 
             if (term && line && fullDocument) {
-                await openChatWindow(term, line, fullDocument);
+                await openChatWindow(context, term, line, fullDocument);
             }
         })
     );
