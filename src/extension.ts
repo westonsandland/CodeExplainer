@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { openChatWindow } from './deepDive';
 import { GENAI_BASE_URL } from './constants';
+import { documentCache, generateDocumentKey } from './documentCache';
 
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map<string, Map<number, string>>();
@@ -161,10 +162,16 @@ async function provideHoverSummary(
         }
         // Transform <term> tags into clickable links with clean tooltips
         const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
+            // Instead of including the full document text, generate a key.
+            const documentKey = generateDocumentKey();
+            // Store the full document text in the cache.
+            documentCache.set(documentKey, fullDocumentText);
+        
+            // Create the command arguments with the key rather than the full text.
             const commandArgs = JSON.stringify({
                 term,
                 line: lineText,
-                document: fullDocumentText,
+                documentKey, // pass the key instead of the full document
             });
             const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(commandArgs)}`;
             return `[${term}](${commandLink} "Chat with GPT about ${term}")`;
@@ -200,10 +207,15 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
             const term = args?.term;
             const line = args?.line;
-            const fullDocument = args?.document;
-
+            const documentKey = args?.documentKey;
+        
+            // Retrieve the full document text from the cache
+            const fullDocument = documentCache.get(documentKey);
+        
             if (term && line && fullDocument) {
                 await openChatWindow(context, term, line, fullDocument);
+            } else {
+                vscode.window.showErrorMessage("Unable to retrieve document details for deep dive.");
             }
         })
     );

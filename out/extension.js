@@ -31,6 +31,7 @@ const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
 const deepDive_1 = require("./deepDive");
 const constants_1 = require("./constants");
+const documentCache_1 = require("./documentCache");
 // codeSummaryCache: Outer key = document URI, Inner key = line number
 const codeSummaryCache = new Map();
 // Function to get the current experience level setting globally
@@ -163,10 +164,15 @@ async function provideHoverSummary(document, position) {
         }
         // Transform <term> tags into clickable links with clean tooltips
         const enhancedSummary = codeSummary.replace(/<term>(.*?)<\/term>/g, (_, term) => {
+            // Instead of including the full document text, generate a key.
+            const documentKey = (0, documentCache_1.generateDocumentKey)();
+            // Store the full document text in the cache.
+            documentCache_1.documentCache.set(documentKey, fullDocumentText);
+            // Create the command arguments with the key rather than the full text.
             const commandArgs = JSON.stringify({
                 term,
                 line: lineText,
-                document: fullDocumentText,
+                documentKey, // pass the key instead of the full document
             });
             const commandLink = `command:codeExplainer.chatWithGPT?${encodeURIComponent(commandArgs)}`;
             return `[${term}](${commandLink} "Chat with GPT about ${term}")`;
@@ -195,9 +201,14 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('codeExplainer.chatWithGPT', async (args) => {
         const term = args === null || args === void 0 ? void 0 : args.term;
         const line = args === null || args === void 0 ? void 0 : args.line;
-        const fullDocument = args === null || args === void 0 ? void 0 : args.document;
+        const documentKey = args === null || args === void 0 ? void 0 : args.documentKey;
+        // Retrieve the full document text from the cache
+        const fullDocument = documentCache_1.documentCache.get(documentKey);
         if (term && line && fullDocument) {
             await (0, deepDive_1.openChatWindow)(context, term, line, fullDocument);
+        }
+        else {
+            vscode.window.showErrorMessage("Unable to retrieve document details for deep dive.");
         }
     }));
 }
